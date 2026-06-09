@@ -20,6 +20,17 @@ app.use(express.json());
 app.post('/api/chat', async (req, res) => {
   try {
     console.log('Request received from:', req.headers.origin || 'unknown');
+    console.log('Request body:', JSON.stringify(req.body).substring(0, 200));
+
+    // Build clean request body for Anthropic
+    const anthropicBody = {
+      model: 'claude-sonnet-4-5',
+      max_tokens: 1024,
+      system: req.body.system,
+      messages: req.body.messages
+    };
+
+    console.log('Sending to Anthropic:', JSON.stringify(anthropicBody).substring(0, 200));
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -28,11 +39,12 @@ app.post('/api/chat', async (req, res) => {
         'x-api-key': process.env.ANTHROPIC_API_KEY,
         'anthropic-version': '2023-06-01'
       },
-      body: JSON.stringify(req.body)
+      body: JSON.stringify(anthropicBody)
     });
 
     const data = await response.json();
     console.log('Anthropic response status:', response.status);
+    console.log('Anthropic response:', JSON.stringify(data).substring(0, 200));
     res.json(data);
 
   } catch (error) {
