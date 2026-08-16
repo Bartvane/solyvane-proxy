@@ -20,17 +20,26 @@ app.use(express.json());
 app.post('/api/chat', async (req, res) => {
   try {
     console.log('Request received from:', req.headers.origin || 'unknown');
-    console.log('Request body:', JSON.stringify(req.body).substring(0, 200));
 
-    // Build clean request body for Anthropic
-    const anthropicBody = {
-      model: 'claude-sonnet-4-5',
-      max_tokens: 1024,
-      system: req.body.system,
-      messages: req.body.messages
-    };
+    const body = { ...req.body };
 
-    console.log('Sending to Anthropic:', JSON.stringify(anthropicBody).substring(0, 200));
+    // Enable prompt caching on the system prompt. Every council page sends
+    // the same large, unchanging system prompt (all persona instructions)
+    // on every request — caching it means Anthropic reuses that processed
+    // block instead of reprocessing it from scratch each time, at a 90%
+    // discount on the cached portion for any request that hits the cache
+    // within the 5-minute window. This only transforms plain-string system
+    // prompts — if a request ever sends something else, it passes through
+    // unchanged rather than risk breaking it.
+    if (typeof body.system === 'string') {
+      body.system = [
+        {
+          type: 'text',
+          text: body.system,
+          cache_control: { type: 'ephemeral' }
+        }
+      ];
+    }
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -39,12 +48,14 @@ app.post('/api/chat', async (req, res) => {
         'x-api-key': process.env.ANTHROPIC_API_KEY,
         'anthropic-version': '2023-06-01'
       },
-      body: JSON.stringify(anthropicBody)
+      body: JSON.stringify(body)
     });
 
     const data = await response.json();
     console.log('Anthropic response status:', response.status);
-    console.log('Anthropic response:', JSON.stringify(data).substring(0, 200));
+    if (data.usage) {
+      console.log('Token usage:', JSON.stringify(data.usage));
+    }
     res.json(data);
 
   } catch (error) {
