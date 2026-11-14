@@ -23,6 +23,16 @@ app.post('/api/chat', async (req, res) => {
 
     const body = { ...req.body };
 
+    // MODEL CONTROL: if the ANTHROPIC_MODEL environment variable is set on
+    // Render, it overrides whatever model name the website pages send. That
+    // lets us switch models (e.g. when Anthropic retires one) by changing a
+    // single setting here instead of editing and re-uploading every page.
+    // If the variable is NOT set, behavior is exactly as before (the page's
+    // own model name is used), so removing the variable is an instant rollback.
+    if (process.env.ANTHROPIC_MODEL) {
+      body.model = process.env.ANTHROPIC_MODEL;
+    }
+
     // Enable prompt caching on the system prompt. Every council page sends
     // the same large, unchanging system prompt (all persona instructions)
     // on every request — caching it means Anthropic reuses that processed
@@ -52,7 +62,7 @@ app.post('/api/chat', async (req, res) => {
     });
 
     const data = await response.json();
-    console.log('Anthropic response status:', response.status);
+    console.log('Anthropic response status:', response.status, 'model:', body.model);
     if (data.usage) {
       console.log('Token usage:', JSON.stringify(data.usage));
     }
