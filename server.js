@@ -33,6 +33,22 @@ app.post('/api/chat', async (req, res) => {
       body.model = process.env.ANTHROPIC_MODEL;
     }
 
+    // SONNET 5.x COMPATIBILITY. These models "think" before answering by
+    // default, which (a) puts a thinking block BEFORE the text in the reply
+    // (the pages read the first block as the answer) and (b) counts thinking
+    // tokens against max_tokens. Our pages need plain, fast answers, so we
+    // turn up-front thinking off with the setting Sonnet 5.5 accepts for that
+    // ("between_tools"), and give max_tokens extra headroom because the newer
+    // models use roughly 30% more tokens for the same text.
+    if (typeof body.model === 'string' && body.model.startsWith('claude-sonnet-5-5')) {
+      if (!body.thinking) {
+        body.thinking = { type: 'between_tools' };
+      }
+      if (typeof body.max_tokens === 'number') {
+        body.max_tokens = Math.ceil(body.max_tokens * 1.4);
+      }
+    }
+
     // Enable prompt caching on the system prompt. Every council page sends
     // the same large, unchanging system prompt (all persona instructions)
     // on every request — caching it means Anthropic reuses that processed
@@ -62,6 +78,15 @@ app.post('/api/chat', async (req, res) => {
     });
 
     const data = await response.json();
+
+    // Safety net for any model: keep only the plain-text parts of the reply so
+    // the pages' "first block is the answer" logic always finds text.
+    if (data && Array.isArray(data.content)) {
+      const textBlocks = data.content.filter(b => b && b.type === 'text');
+      if (textBlocks.length > 0) {
+        data.content = textBlocks;
+      }
+    }
     console.log('Anthropic response status:', response.status, 'model:', body.model);
     if (data.usage) {
       console.log('Token usage:', JSON.stringify(data.usage));
